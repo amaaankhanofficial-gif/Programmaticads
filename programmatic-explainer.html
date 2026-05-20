@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Programmatic Advertising — A Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;1,300&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0d14;
+    --surface: #111520;
+    --surface2: #161c2d;
+    --border: rgba(255,255,255,0.07);
+    --gold: #c9a84c;
+    --gold-dim: rgba(201,168,76,0.15);
+    --gold-glow: rgba(201,168,76,0.08);
+    --blue: #4a90e2;
+    --blue-dim: rgba(74,144,226,0.15);
+    --green: #4ecdc4;
+    --green-dim: rgba(78,205,196,0.12);
+    --red: #e85d75;
+    --red-dim: rgba(232,93,117,0.12);
+    --purple: #9b6dff;
+    --text: #e8e6e0;
+    --muted: #7a7d8a;
+    --mono: 'DM Mono', monospace;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    overflow-x: hidden;
+    line-height: 1.6;
+  }
+
+  /* NOISE TEXTURE */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none; z-index: 999; opacity: 0.4;
+  }
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 80px 60px 60px;
+    position: relative;
+    background: radial-gradient(ellipse at 20% 50%, rgba(201,168,76,0.06) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 20%, rgba(74,144,226,0.06) 0%, transparent 50%);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 32px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .hero-label::before {
+    content: '';
+    display: inline-block; width: 32px; height: 1px;
+    background: var(--gold);
+  }
+
+  .hero h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(48px, 7vw, 96px);
+    font-weight: 400;
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+    margin-bottom: 24px;
+  }
+  .hero h1 em {
+    font-style: italic;
+    color: var(--gold);
+  }
+
+  .hero-sub {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--muted);
+    max-width: 540px;
+    line-height: 1.8;
+    margin-bottom: 60px;
+  }
+
+  .hero-stats {
+    display: flex; gap: 48px; flex-wrap: wrap;
+  }
+  .stat-item { }
+  .stat-num {
+    font-family: 'Instrument Serif', serif;
+    font-size: 36px;
+    color: var(--gold);
+    display: block;
+  }
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .scroll-hint {
+    position: absolute; bottom: 40px; right: 60px;
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.15em; color: var(--muted);
+    display: flex; align-items: center; gap: 8px;
+    writing-mode: vertical-rl;
+    animation: float 2s ease-in-out infinite;
+  }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)} }
+
+  /* NAV PILLS */
+  .nav-pills {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(10,13,20,0.92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 60px;
+    display: flex; gap: 4px; flex-wrap: wrap;
+    overflow-x: auto;
+  }
+  .nav-pills a {
+    font-family: var(--mono);
+    font-size: 11px; letter-spacing: 0.1em;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 6px 14px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+  .nav-pills a:hover {
+    color: var(--gold);
+    border-color: var(--gold-dim);
+    background: var(--gold-glow);
+  }
+
+  /* SECTIONS */
+  .section {
+    padding: 80px 60px;
+    border-bottom: 1px solid var(--border);
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .section-tag {
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.2em;
+    color: var(--gold);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .section-tag::before {
+    content: attr(data-num);
+    font-size: 9px; color: var(--muted);
+  }
+
+  .section h2 {
+    font-family: 'Instrument Serif', serif;
+    font-size: clamp(28px, 4vw, 52px);
+    font-weight: 400;
+    line-height: 1.1;
+    margin-bottom: 24px;
+  }
+  .section h2 em { font-style: italic; color: var(--gold); }
+
+  .lead {
+    font-size: 16px; color: #b0aead;
+    max-width: 680px; line-height: 1.8;
+    margin-bottom: 48px;
+  }
+
+  /* DEFINITION BOX */
+  .def-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--gold);
+    padding: 28px 32px;
+    margin-bottom: 40px;
+    position: relative;
+  }
+  .def-box::before {
+    content: '"';
+    font-family: 'Instrument Serif', serif;
+    font-size: 80px;
+    color: var(--gold-dim);
+    position: absolute; top: -10px; left: 24px;
+    line-height: 1;
+  }
+  .def-box p {
+    font-family: 'Instrument Serif', serif;
+    font-size: 20px;
+    font-style: italic;
+    line-height: 1.6;
+    padding-left: 8px;
+  }
+
+  /* GRID CARDS */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin-bottom: 48px;
+  }
+  .card {
+    background: var(--surface);
+    padding: 28px;
+    transition: background 0.2s;
+  }
+  .card:hover { background: var(--surface2); }
+  .card-icon {
+    font-size: 22px; margin-bottom: 14px;
+  }
+  .card h3 {
+    font-size: 14px; font-weight: 700;
+    letter-spacing: 0.04em;
+    margin-bottom: 10px;
+  }
+  .card p {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .card .tag {
+    display: inline-block;
+    margin-top: 14px;
+    font-family: var(--mono);
+    font-size: 9px; letter-spacing: 0.15em;
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+  .tag-gold { background: var(--gold-dim); color: var(--gold); }
+  .tag-blue { background: var(--blue-dim); color: var(--blue); }
+  .tag-green { background: var(--green-dim); color: var(--green); }
+  .tag-red { background: var(--red-dim); color: var(--red); }
+  .tag-purple { background: rgba(155,109,255,0.15); color: var(--purple); }
+
+  /* FLOW DIAGRAM */
+  .flow {
+    display: flex; align-items: stretch;
+    flex-wrap: wrap; gap: 0;
+    margin: 40px 0;
+  }
+  .flow-node {
+    flex: 1; min-width: 140px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 24px 20px;
+    position: relative;
+    transition: all 0.3s;
+    cursor: default;
+  }
+  .flow-node:hover {
+    border-color: var(--gold);
+    background: var(--surface2);
+    z-index: 2;
+  }
+  .flow-node:not(:last-child)::after {
+    content: '→';
+    position: absolute; right: -14px; top: 50%;
+    transform: translateY(-50%);
+    color: var(--gold);
+    font-size: 18px; z-index: 3;
+    background: var(--bg);
+    padding: 2px 4px;
+  }
+  .flow-node .fn-label {
+    font-family: var(--mono);
+    font-size: 9px; letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .flow-node h4 {
+    font-size: 13px; font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .flow-node p {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .flow-node .fn-time {
+    margin-top: 12px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--gold);
+  }
+
+  /* TIMELINE STEPS */
+  .timeline {
+    position: relative;
+    padding-left: 32px;
+    margin: 32px 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute; left: 7px; top: 0; bottom: 0;
+    width: 1px; background: var(--border);
+  }
+  .tl-item {
+    position: relative; margin-bottom: 32px;
+  }
+  .tl-item::before {
+    content: '';
+    position: absolute; left: -29px; top: 4px;
+    width: 10px; height: 10px;
+    border: 1px solid var(--gold);
+    border-radius: 50%;
+    background: var(--bg);
+    transition: background 0.2s;
+  }
+  .tl-item:hover::before { background: var(--gold); }
+  .tl-item h4 {
+    font-size: 14px; font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .tl-item p {
+    font-family: var(--mono);
+    font-size: 12px; color: var(--muted);
+    line-height: 1.7;
+  }
+
+  /* COMPARISON TABLE */
+  .compare-table {
+    width: 100%; border-collapse: collapse;
+    margin: 32px 0; font-size: 13px;
+  }
+  .compare-table th {
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 14px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--gold);
+    text-align: left;
+  }
+  .compare-table td {
+    padding: 14px 20px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    vertical-align: top;
+    line-height: 1.6;
+  }
+  .compare-table tr:hover td { background: var(--surface); }
+  .compare-table td:first-child { color: var(--text); font-weight: 600; }
+  .check { color: var(--green); }
+  .cross { color: var(--red); }
+
+  /* CODE BLOCK */
+  .code-block {
+    background: #080b10;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--blue);
+    padding: 24px 28px;
+    margin: 24px 0;
+    overflow-x: auto;
+  }
+  .code-block pre {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.8;
+    color: #a8b0c0;
+  }
+  .code-block .c-key { color: #4a90e2; }
+  .code-block .c-val { color: #c9a84c; }
+  .code-block .c-str { color: #4ecdc4; }
+  .code-block .c-num { color: #e85d75; }
+  .code-block .c-cmt { color: #4a5068; font-style: italic; }
+
+  /* DV360 SECTION */
+  .dv360-header {
+    display: flex; align-items: center; gap: 20px;
+    margin-bottom: 40px;
+    padding: 24px 28px;
+    background: linear-gradient(135deg, rgba(74,144,226,0.08), transparent);
+    border: 1px solid rgba(74,144,226,0.2);
+  }
+  .dv360-badge {
+    font-family: var(--mono);
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.1em;
+    color: var(--blue);
+    background: var(--blue-dim);
+    border: 1px solid rgba(74,144,226,0.3);
+    padding: 8px 16px;
+    white-space: nowrap;
+  }
+  .dv360-header p {
+    font-family: var(--mono);
+    font-size: 12px; color: var(--muted);
+    line-height: 1.7;
+  }
+
+  /* METRICS ROW */
+  .metrics-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin: 32px 0;
+  }
+  .metric {
+    background: var(--surface);
+    padding: 24px 20px;
+    text-align: center;
+  }
+  .metric-val {
+    font-family: 'Instrument Serif', serif;
+    font-size: 32px;
+    display: block;
+    margin-bottom: 4px;
+  }
+  .metric-label {
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  /* ACCORDION */
+  .accordion { margin: 16px 0; }
+  .acc-item {
+    border: 1px solid var(--border);
+    margin-bottom: 1px;
+    overflow: hidden;
+  }
+  .acc-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 18px 24px;
+    cursor: pointer;
+    background: var(--surface);
+    transition: background 0.2s;
+    user-select: none;
+  }
+  .acc-header:hover { background: var(--surface2); }
+  .acc-header h4 {
+    font-size: 13px; font-weight: 700;
+  }
+  .acc-arrow {
+    font-family: var(--mono);
+    font-size: 16px; color: var(--gold);
+    transition: transform 0.3s;
+  }
+  .acc-item.open .acc-arrow { transform: rotate(45deg); }
+  .acc-body {
+    max-height: 0; overflow: hidden;
+    transition: max-height 0.4s ease, padding 0.3s;
+    background: var(--bg);
+  }
+  .acc-item.open .acc-body { max-height: 600px; }
+  .acc-body-inner {
+    padding: 24px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .acc-body-inner ul { padding-left: 16px; }
+  .acc-body-inner li { margin-bottom: 8px; }
+  .acc-body-inner strong { color: var(--text); }
+
+  /* HIGHLIGHT BOX */
+  .highlight {
+    padding: 20px 24px;
+    margin: 20px 0;
+    border-radius: 2px;
+  }
+  .highlight-gold {
+    background: var(--gold-glow);
+    border: 1px solid rgba(201,168,76,0.2);
+  }
+  .highlight-blue {
+    background: rgba(74,144,226,0.05);
+    border: 1px solid rgba(74,144,226,0.15);
+  }
+  .highlight p {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .highlight strong { color: var(--text); }
+
+  /* TWO COL */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 24px 0; }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* PILL LABEL */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: 0.1em;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 600;
+    margin: 3px;
+  }
+  .pill::before { content: '●'; font-size: 7px; }
+
+  /* FOOTER */
+  footer {
+    padding: 60px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 20px;
+  }
+  footer p {
+    font-family: var(--mono);
+    font-size: 11px; color: var(--muted);
+  }
+
+  /* ANIMATIONS */
+  .fade-in {
+    opacity: 0; transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  .fade-in.visible { opacity: 1; transform: translateY(0); }
+
+  @media (max-width: 768px) {
+    .hero, .section, .nav-pills { padding-left: 24px; padding-right: 24px; }
+    .hero-stats { gap: 24px; }
+    .flow { flex-direction: column; }
+    .flow-node:not(:last-child)::after { content: '↓'; right: auto; left: 50%; bottom: -14px; top: auto; transform: translateX(-50%); }
+    footer { padding: 40px 24px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-label">Performance Marketing Deep Dive</div>
+  <h1>What is <em>Programmatic</em><br>Advertising?</h1>
+  <p class="hero-sub">
+    The automated, data-driven machinery behind modern digital media buying.
+    From an SSP auction to a user's screen — in under 100 milliseconds.
+  </p>
+  <div class="hero-stats">
+    <div class="stat-item"><span class="stat-num">~100ms</span><span class="stat-label">Auction to Ad Served</span></div>
+    <div class="stat-item"><span class="stat-num">$700B+</span><span class="stat-label">Global Prog. Ad Spend 2025</span></div>
+    <div class="stat-item"><span class="stat-num">90%+</span><span class="stat-label">Display Ads Are Programmatic</span></div>
+    <div class="stat-item"><span class="stat-num">1T+</span><span class="stat-label">Impressions Auctioned Daily</span></div>
+  </div>
+  <span class="scroll-hint">scroll ↓</span>
+</section>
+
+<!-- NAV -->
+<nav class="nav-pills">
+  <a href="#what">What is it?</a>
+  <a href="#ecosystem">Ecosystem</a>
+  <a href="#rtb">RTB Process</a>
+  <a href="#buying-types">Buying Types</a>
+  <a href="#dv360">DV360 Deep Dive</a>
+  <a href="#targeting">Targeting</a>
+  <a href="#measurement">Measurement</a>
+  <a href="#challenges">Challenges</a>
+  <a href="#vs">Prog vs Direct</a>
+</nav>
+
+<!-- 1. WHAT IS PROGRAMMATIC -->
+<section class="section fade-in" id="what">
+  <div class="section-tag" data-num="01">Foundation</div>
+  <h2>What is <em>Programmatic</em>?</h2>
+  <div class="def-box">
+    <p>Programmatic advertising is the automated buying and selling of digital ad inventory using software, data, and algorithms — replacing the traditional manual process of negotiations, insertion orders, and phone calls between buyers and sellers.</p>
+  </div>
+  <p class="lead">Think of it as a stock exchange for ad impressions. Every time a webpage loads, an auction fires. Buyers bid based on who the user is. The highest bidder wins. All of this happens before the page finishes loading.</p>
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon">🤖</div>
+      <h3>AUTOMATED</h3>
+      <p>No manual negotiations. Software executes thousands of buying decisions per second, 24/7, across millions of websites simultaneously.</p>
+      <span class="tag tag-gold">MACHINE SPEED</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📊</div>
+      <h3>DATA-DRIVEN</h3>
+      <p>Every bid is informed by audience data — who the user is, what they've browsed, their demographics, intent signals, and more.</p>
+      <span class="tag tag-blue">AUDIENCE FIRST</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">⚡</div>
+      <h3>REAL-TIME</h3>
+      <p>Auctions happen per impression, per user, in real time. You pay for who sees your ad, not just where it appears.</p>
+      <span class="tag tag-green">RTB</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎯</div>
+      <h3>OPTIMIZABLE</h3>
+      <p>Algorithms continuously learn from performance signals — CTR, conversions, viewability — and shift spend toward what works.</p>
+      <span class="tag tag-gold">ML POWERED</span>
+    </div>
+  </div>
+
+  <div class="highlight highlight-gold">
+    <p><strong>Key shift:</strong> Traditional media buying was site-centric — "I want to be on ESPN.com." Programmatic is audience-centric — "I want to reach in-market SUV buyers, wherever they are across the internet."</p>
+  </div>
+</section>
+
+<!-- 2. ECOSYSTEM -->
+<section class="section fade-in" id="ecosystem">
+  <div class="section-tag" data-num="02">The Stack</div>
+  <h2>The Programmatic <em>Ecosystem</em></h2>
+  <p class="lead">Programmatic runs on a layered tech stack. Each layer has a specific role, and data flows between all of them in milliseconds.</p>
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon">🏢</div>
+      <h3>ADVERTISER / BRAND</h3>
+      <p>The buyer. Wants to reach specific audiences and drive measurable outcomes (awareness, leads, purchases).</p>
+      <span class="tag tag-gold">DEMAND SIDE</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🖥️</div>
+      <h3>DSP — Demand Side Platform</h3>
+      <p>The advertiser's buying interface. Sets targeting, bids, budgets, creatives. Examples: DV360, The Trade Desk, Amazon DSP, Meta Advantage+.</p>
+      <span class="tag tag-blue">BUY SIDE TECH</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔄</div>
+      <h3>AD EXCHANGE</h3>
+      <p>The marketplace where buyers and sellers meet. Runs the auction. Examples: Google Ad Exchange (AdX), OpenX, Magnite.</p>
+      <span class="tag tag-green">MARKETPLACE</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📰</div>
+      <h3>SSP — Supply Side Platform</h3>
+      <p>The publisher's monetization tool. Packages and sells their inventory to exchanges. Examples: GAM, Pubmatic, Index Exchange.</p>
+      <span class="tag tag-red">SELL SIDE TECH</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🗂️</div>
+      <h3>DMP / CDP</h3>
+      <p>Data Management / Customer Data Platform. Aggregates and segments audience data (1st, 2nd, 3rd party) to inform bidding decisions.</p>
+      <span class="tag tag-purple">DATA LAYER</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🌐</div>
+      <h3>PUBLISHER / WEBSITE</h3>
+      <p>The inventory owner. Has ad slots to fill. Connects to SSP to maximize revenue from their audience and content.</p>
+      <span class="tag tag-gold">SUPPLY SIDE</span>
+    </div>
+  </div>
+</section>
+
+<!-- 3. RTB PROCESS -->
+<section class="section fade-in" id="rtb">
+  <div class="section-tag" data-num="03">The Auction</div>
+  <h2>Real-Time Bidding — <em>What Actually Happens</em></h2>
+  <p class="lead">A user lands on a page. In the time it takes to blink, here's what fires:</p>
+
+  <div class="flow">
+    <div class="flow-node">
+      <div class="fn-label">Step 01</div>
+      <h4>Page Load</h4>
+      <p>User visits a publisher's site. The page begins to load.</p>
+      <div class="fn-time">t = 0ms</div>
+    </div>
+    <div class="flow-node">
+      <div class="fn-label">Step 02</div>
+      <h4>Bid Request</h4>
+      <p>SSP fires a bid request to ad exchanges with user data, ad slot specs, floor price.</p>
+      <div class="fn-time">t = 5ms</div>
+    </div>
+    <div class="flow-node">
+      <div class="fn-label">Step 03</div>
+      <h4>DSP Evaluation</h4>
+      <p>DSP receives the request, checks targeting rules, and calculates a bid using algorithms + data.</p>
+      <div class="fn-time">t = 20ms</div>
+    </div>
+    <div class="flow-node">
+      <div class="fn-label">Step 04</div>
+      <h4>Auction</h4>
+      <p>Exchange receives all bids. 2nd-price auction: winner pays $0.01 above 2nd-highest bid.</p>
+      <div class="fn-time">t = 80ms</div>
+    </div>
+    <div class="flow-node">
+      <div class="fn-label">Step 05</div>
+      <h4>Ad Served</h4>
+      <p>Winning ad creative is fetched and rendered in the user's browser.</p>
+      <div class="fn-time">t = 100ms</div>
+    </div>
+  </div>
+
+  <div class="highlight highlight-blue">
+    <p><strong>Header Bidding:</strong> A newer evolution where the publisher sends bid requests to multiple exchanges <em>simultaneously</em> (not sequentially), maximizing competition and yield. Most major publishers use header bidding today via Prebid.js.</p>
+  </div>
+
+  <div class="two-col" style="margin-top:32px;">
+    <div class="card" style="background:var(--surface);">
+      <h3>2ND PRICE AUCTION (Classic)</h3>
+      <p style="margin-top:8px;">Winner pays $0.01 above the second-highest bid. Incentivizes true-value bidding. e.g. A bids $5, B bids $3 → A wins, pays $3.01.</p>
+    </div>
+    <div class="card" style="background:var(--surface);">
+      <h3>1ST PRICE AUCTION (Modern)</h3>
+      <p style="margin-top:8px;">Winner pays their exact bid. Now common since 2019 industry shift. Requires smarter bid shading — DSPs like DV360 do this automatically.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 4. BUYING TYPES -->
+<section class="section fade-in" id="buying-types">
+  <div class="section-tag" data-num="04">Deal Structures</div>
+  <h2>Programmatic <em>Buying Types</em></h2>
+  <p class="lead">Not all programmatic is open-market bidding. Here's the full spectrum of how inventory is transacted:</p>
+
+  <div class="accordion">
+    <div class="acc-item open">
+      <div class="acc-header" onclick="toggleAcc(this)">
+        <h4>🔓 Open Auction (Open RTB)</h4>
+        <span class="acc-arrow">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p>The default programmatic marketplace. Any eligible buyer can participate. Highest bidder wins.</p>
+          <ul>
+            <li><strong>Pro:</strong> Massive scale. Access to billions of impressions across any publisher.</li>
+            <li><strong>Pro:</strong> Lowest CPMs typically.</li>
+            <li><strong>Con:</strong> Less control over premium placements. Brand safety risks.</li>
+            <li><strong>Con:</strong> Higher fraud risk vs. private deals.</li>
+          </ul>
+          <br><p>Best for: broad awareness, prospecting, performance campaigns needing scale.</p>
+        </div>
+      </div>
+    </div>
+    <div class="acc-item">
+      <div class="acc-header" onclick="toggleAcc(this)">
+        <h4>🔒 Private Marketplace (PMP)</h4>
+        <span class="acc-arrow">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p>An invitation-only auction. Publisher creates a curated deal with a select group of buyers. Buyers bid with a Deal ID within the PMP.</p>
+          <ul>
+            <li><strong>Pro:</strong> Access to premium, brand-safe publisher inventory.</li>
+            <li><strong>Pro:</strong> More transparency — you know the exact sites/apps.</li>
+            <li><strong>Con:</strong> Higher floor prices. Less scale than open auction.</li>
+          </ul>
+          <br><p>Best for: brand campaigns, premium publishers (NYT, Forbes), vertical-specific placements.</p>
+        </div>
+      </div>
+    </div>
+    <div class="acc-item">
+      <div class="acc-header" onclick="toggleAcc(this)">
+        <h4>🤝 Preferred Deal</h4>
+        <span class="acc-arrow">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p>A 1:1 negotiated deal between advertiser and publisher at a fixed CPM. Buyer gets first look at the inventory before it goes to open auction, but isn't obligated to buy.</p>
+          <ul>
+            <li><strong>Pro:</strong> Fixed pricing. First-look advantage.</li>
+            <li><strong>Pro:</strong> Relationship-driven — you know exactly who you're buying from.</li>
+            <li><strong>Con:</strong> No guaranteed volume. Publisher may not always have matching inventory.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="acc-item">
+      <div class="acc-header" onclick="toggleAcc(this)">
+        <h4>📋 Programmatic Guaranteed (PG)</h4>
+        <span class="acc-arrow">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p>Automated direct buying with reserved inventory. Combines the guarantees of traditional direct deals with programmatic automation. No auction — it's a reservation.</p>
+          <ul>
+            <li><strong>Pro:</strong> Guaranteed impressions and placement. Great for launches, sponsorships.</li>
+            <li><strong>Pro:</strong> Programmatic workflow — no IO paperwork, automated trafficking.</li>
+            <li><strong>Con:</strong> Premium CPMs. Must negotiate volume upfront.</li>
+            <li>In DV360: set up under <strong>Inventory → Deals → Programmatic Guaranteed</strong>.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <table class="compare-table" style="margin-top:32px;">
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th>Auction?</th>
+        <th>Guaranteed?</th>
+        <th>Price</th>
+        <th>Transparency</th>
+        <th>Scale</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Open RTB</td><td>✅ Yes</td><td class="cross">✗ No</td><td>Variable (lowest)</td><td>Low</td><td>Highest</td></tr>
+      <tr><td>PMP</td><td>✅ Yes</td><td class="cross">✗ No</td><td>Floor + bidding</td><td>Medium</td><td>Medium</td></tr>
+      <tr><td>Preferred Deal</td><td class="cross">✗ No</td><td class="cross">✗ No</td><td>Fixed CPM</td><td>High</td><td>Low</td></tr>
+      <tr><td>Prog. Guaranteed</td><td class="cross">✗ No</td><td class="check">✓ Yes</td><td>Fixed CPM (highest)</td><td>Highest</td><td>Fixed</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 5. DV360 -->
+<section class="section fade-in" id="dv360">
+  <div class="section-tag" data-num="05">Case Study — DSP</div>
+  <h2>DV360 — <em>Google's DSP</em> Explained</h2>
+
+  <div class="dv360-header">
+    <div class="dv360-badge">DISPLAY & VIDEO 360</div>
+    <p>DV360 (formerly DoubleClick Bid Manager) is Google's enterprise-grade Demand Side Platform. It's the buy-side tool in Google's marketing stack, connected to Google Ad Exchange, YouTube, and hundreds of third-party exchanges.</p>
+  </div>
+
+  <p class="lead">DV360 is where programmatic strategy meets execution for large advertisers and agencies. Here's how its architecture maps to programmatic theory:</p>
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon">🏛️</div>
+      <h3>PARTNER / ADVERTISER</h3>
+      <p>Top-level account structure. Partner = agency (e.g. Publicis). Advertiser = individual brand client. All campaigns sit under an advertiser.</p>
+      <span class="tag tag-blue">ACCOUNT LEVEL</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📁</div>
+      <h3>CAMPAIGN</h3>
+      <p>Budget, flight dates, frequency caps, KPI goals (e.g. target CPA, target ROAS, maximize impressions). Sets the overarching objective.</p>
+      <span class="tag tag-gold">STRATEGY LEVEL</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎯</div>
+      <h3>INSERTION ORDER (IO)</h3>
+      <p>Represents a budget allocation within a campaign. Has its own pacing, spend targets, and can hold multiple line items.</p>
+      <span class="tag tag-green">PLANNING LEVEL</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📋</div>
+      <h3>LINE ITEM (LI)</h3>
+      <p>The execution layer. This is where targeting, bidding strategy, frequency, creatives, and inventory sources are set. The most granular lever.</p>
+      <span class="tag tag-red">EXECUTION LEVEL</span>
+    </div>
+  </div>
+
+  <h3 style="font-size:18px; margin: 40px 0 20px; font-family:'Instrument Serif',serif; font-style:italic;">DV360 Campaign Structure Hierarchy</h3>
+  <div class="code-block">
+    <pre>
+<span class="c-cmt">// DV360 Account Structure</span>
+
+<span class="c-key">Partner</span>: <span class="c-str">"Publicis Groupe"</span>
+  └── <span class="c-key">Advertiser</span>: <span class="c-str">"Brand X (Automotive)"</span>
+        └── <span class="c-key">Campaign</span>: <span class="c-str">"Q3 2025 | SUV Launch | India"</span>
+              ├── <span class="c-key">Insertion Order</span>: <span class="c-str">"Prospecting | Display"</span>
+              │     ├── <span class="c-key">Line Item</span>: <span class="c-str">"In-Market Auto | Display | Open RTB"</span>
+              │     │     ├── Targeting: <span class="c-val">In-market: Auto Buyers, Age 28-50</span>
+              │     │     ├── Bidding:   <span class="c-val">Target CPA: ₹800</span>
+              │     │     └── Creative:  <span class="c-val">300×250, 728×90, 160×600</span>
+              │     └── <span class="c-key">Line Item</span>: <span class="c-str">"Contextual | Auto Sites | PMP Deal"</span>
+              │           ├── Deal ID:   <span class="c-val">DX-AUTO-PREMIUM-001</span>
+              │           └── Bidding:   <span class="c-val">Fixed CPM: ₹180</span>
+              └── <span class="c-key">Insertion Order</span>: <span class="c-str">"Retargeting | Video"</span>
+                    └── <span class="c-key">Line Item</span>: <span class="c-str">"Site Visitors | YouTube TrueView"</span>
+                          ├── Audience:  <span class="c-val">1P List: Site Visitors (30d)</span>
+                          └── Bidding:   <span class="c-val">Target CPV: ₹0.40</span>
+    </pre>
+  </div>
+
+  <h3 style="font-size:18px; margin: 40px 0 20px; font-family:'Instrument Serif',serif; font-style:italic;">Bidding Strategies in DV360</h3>
+  <div class="cards-grid">
+    <div class="card">
+      <h3>FIXED BID</h3>
+      <p>You manually set a CPM/CPC. No automation. You control exactly what you pay per impression. Good for PMPs, testing, or guaranteed deals.</p>
+    </div>
+    <div class="card">
+      <h3>TARGET CPA</h3>
+      <p>Algo targets a specific cost per conversion. Requires conversion data. DV360 auto-adjusts bids based on predicted conversion probability.</p>
+    </div>
+    <div class="card">
+      <h3>MAXIMIZE CLICKS</h3>
+      <p>Spend full budget while maximizing click volume. Useful for traffic campaigns without hard conversion goals.</p>
+    </div>
+    <div class="card">
+      <h3>VIEWABLE IMPRESSION</h3>
+      <p>Bids to maximize Active View impressions (MRC standard: 50% in view for 1 second). Great for brand awareness KPIs.</p>
+    </div>
+  </div>
+
+  <div class="highlight highlight-gold" style="margin-top:32px;">
+    <p><strong>DV360 vs Google Ads:</strong> Google Ads is a self-serve platform for search + display with limited targeting depth. DV360 is an enterprise DSP with access to Google AdX, YouTube, third-party exchanges, first-party data integration (via PAIR), cross-channel frequency management, and programmatic guaranteed deals. DV360 also has deeper DMP/CDP integration and advanced measurement via Floodlight tags.</p>
+  </div>
+</section>
+
+<!-- 6. TARGETING -->
+<section class="section fade-in" id="targeting">
+  <div class="section-tag" data-num="06">Audience Intelligence</div>
+  <h2>Programmatic <em>Targeting Signals</em></h2>
+  <p class="lead">The power of programmatic is precise audience targeting. Here's the full toolkit:</p>
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon">👤</div>
+      <h3>DEMOGRAPHIC</h3>
+      <p>Age, gender, household income, parental status. Source: inferred from login data, panel data, surveys.</p>
+      <span class="tag tag-blue">IDENTITY</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📍</div>
+      <h3>GEO-TARGETING</h3>
+      <p>Country, state, city, PIN code, radius targeting. DV360 also supports proximity targeting near dealerships or stores.</p>
+      <span class="tag tag-green">LOCATION</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔍</div>
+      <h3>IN-MARKET AUDIENCES</h3>
+      <p>Google's ML-powered segments of users actively researching specific categories (e.g. "In-Market: Luxury Vehicles"). High purchase intent.</p>
+      <span class="tag tag-gold">INTENT</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📰</div>
+      <h3>CONTEXTUAL</h3>
+      <p>Matches ads to the content of the page being viewed — no cookies needed. Keyword, topic, or URL-based. Privacy-safe targeting.</p>
+      <span class="tag tag-blue">COOKIELESS</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🔁</div>
+      <h3>REMARKETING</h3>
+      <p>Targeting users who've already visited your site, used your app, or interacted with your ads. Uses 1P pixel/Floodlight data.</p>
+      <span class="tag tag-red">1ST PARTY</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🧬</div>
+      <h3>LOOKALIKE / SIMILAR</h3>
+      <p>DSP expands reach to users who behave similarly to your existing converters or high-value customers. DV360 calls these "Similar Audiences."</p>
+      <span class="tag tag-purple">ML MODELED</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📱</div>
+      <h3>DEVICE / OS</h3>
+      <p>Desktop, mobile, tablet, CTV. OS targeting (iOS vs Android). Useful for creative optimization and app install campaigns.</p>
+      <span class="tag tag-green">TECHNICAL</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">⏰</div>
+      <h3>DAYPARTING</h3>
+      <p>Schedule ads to run only at specific times of day or days of week. Layer with bid adjustments — bid higher during peak conversion windows.</p>
+      <span class="tag tag-gold">TEMPORAL</span>
+    </div>
+  </div>
+
+  <h3 style="font-size:18px; margin: 40px 0 16px; font-family:'Instrument Serif',serif; font-style:italic;">Data Types: 1st vs 2nd vs 3rd Party</h3>
+  <table class="compare-table">
+    <thead>
+      <tr><th>Data Type</th><th>Source</th><th>Quality</th><th>Privacy Risk</th><th>Example in DV360</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1st Party</td><td>Your own CRM, pixel, app</td><td>Highest</td><td>Low</td><td>Floodlight audiences, CRM lists via PAIR</td></tr>
+      <tr><td>2nd Party</td><td>Direct data partnerships</td><td>High</td><td>Medium</td><td>Publisher data deals, co-op segments</td></tr>
+      <tr><td>3rd Party</td><td>Data brokers (Oracle, Nielsen)</td><td>Medium</td><td>High</td><td>Marketplace audiences in DV360 Audience Center</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- 7. MEASUREMENT -->
+<section class="section fade-in" id="measurement">
+  <div class="section-tag" data-num="07">Measurement & Optimization</div>
+  <h2>How We <em>Measure</em> Programmatic</h2>
+  <p class="lead">Programmatic's true advantage is measurability. Every impression, click, and conversion is trackable and attributable.</p>
+
+  <div class="metrics-row">
+    <div class="metric"><span class="metric-val" style="color:var(--blue);">CPM</span><span class="metric-label">Cost Per Mille (1000 imps)</span></div>
+    <div class="metric"><span class="metric-val" style="color:var(--gold);">CTR</span><span class="metric-label">Click-Through Rate</span></div>
+    <div class="metric"><span class="metric-val" style="color:var(--green);">CPC</span><span class="metric-label">Cost Per Click</span></div>
+    <div class="metric"><span class="metric-val" style="color:var(--red);">CPA</span><span class="metric-label">Cost Per Acquisition</span></div>
+    <div class="metric"><span class="metric-val" style="color:var(--purple);">ROAS</span><span class="metric-label">Return on Ad Spend</span></div>
+    <div class="metric"><span class="metric-val" style="color:var(--blue);">VTR</span><span class="metric-label">View-Through Rate</span></div>
+  </div>
+
+  <div class="accordion">
+    <div class="acc-item">
+      <div class="acc-header" onclick="toggleAcc(this)">
+        <h4>📐 Viewability (Active View)</h4>
+        <span class="acc-arrow">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p>MRC standard: an ad is "viewable" if <strong>50% of its pixels are in-view for at least 1 continuous second</strong> (2 seconds for video).</p>
+          <ul>
+            <li>DV360 reports Active View metrics natively.</li>
+            <li>Industry benchmark: 70%+ viewability is considered good for display.</li>
+            <li>Viewable CPM (vCPM) pricing is increasingly common for brand campaigns.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="acc-item">
+      <div class="acc-header" onclick="toggleAcc(this)">
+        <h4>🔄 Attribution Models</h4>
+        <span class="acc-arrow">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <ul>
+            <li><strong>Last Click:</strong> 100% credit to final click. Undervalues upper-funnel programmatic.</li>
+            <li><strong>View-Through Attribution:</strong> Credits impressions that weren't clicked but preceded a conversion. Standard in DV360 (30-day window by default).</li>
+            <li><strong>Data-Driven Attribution (DDA):</strong> ML model distributes credit across touchpoints based on their actual contribution. Available in DV360 via CM360 integration.</li>
+            <li><strong>Floodlight Tags:</strong> Google's cross-channel tracking pixel used across DV360, CM360, and SA360. The source of truth for conversions in the Google stack.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="acc-item">
+      <div class="acc-header" onclick="toggleAcc(this)">
+        <h4>🧪 Incrementality & Brand Lift</h4>
+        <span class="acc-arrow">+</span>
+      </div>
+      <div class="acc-body">
+        <div class="acc-body-inner">
+          <p>Beyond last-click: did the campaign actually drive incremental results?</p>
+          <ul>
+            <li><strong>Brand Lift Study (DV360/YouTube):</strong> Measures ad recall, awareness, consideration via survey-based holdout testing.</li>
+            <li><strong>Conversion Lift:</strong> A/B holdout experiment measuring actual conversion uplift from exposed vs. unexposed users.</li>
+            <li><strong>Media Mix Modeling (MMM):</strong> Statistical model attributing revenue contribution to each channel, accounting for saturation and lag effects.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8. CHALLENGES -->
+<section class="section fade-in" id="challenges">
+  <div class="section-tag" data-num="08">The Dark Side</div>
+  <h2>Programmatic <em>Challenges</em></h2>
+  <p class="lead">Programmatic is powerful but comes with a set of persistent challenges every practitioner must navigate:</p>
+
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-icon">🤖</div>
+      <h3>AD FRAUD & IVT</h3>
+      <p>Invalid traffic (bots, click farms, domain spoofing) inflates impression counts without real humans. Industry loses ~$100B/year. Mitigation: IAS, DoubleVerify, ads.txt, SIVT filtering.</p>
+      <span class="tag tag-red">BRAND RISK</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🎭</div>
+      <h3>BRAND SAFETY</h3>
+      <p>Ads appearing next to harmful, controversial, or inappropriate content. Open auction = less control. Solution: blocklists, inclusion lists, brand safety vendors (IAS, DV).</p>
+      <span class="tag tag-red">REPUTATION</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">🍪</div>
+      <h3>COOKIE DEPRECATION</h3>
+      <p>3rd-party cookies are fading. Chrome's Privacy Sandbox, iOS tracking restrictions (ATT) are reshaping audience targeting. Shift to 1P data and contextual is critical.</p>
+      <span class="tag tag-gold">INDUSTRY SHIFT</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">📦</div>
+      <h3>AD STACKING / STUFFING</h3>
+      <p>Multiple ads stacked invisibly on top of each other — publisher charges for all, only top one is seen. Viewability measurement helps expose this.</p>
+      <span class="tag tag-red">FRAUD</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">💰</div>
+      <h3>SUPPLY CHAIN OPACITY</h3>
+      <p>The "ad tech tax" — only ~50 cents of every dollar reaches the publisher. Multiple intermediaries each take a cut. Advertisers push for transparency via ads.txt and supply path optimization (SPO).</p>
+      <span class="tag tag-gold">COST EFFICIENCY</span>
+    </div>
+    <div class="card">
+      <div class="card-icon">😤</div>
+      <h3>AD FATIGUE</h3>
+      <p>Poor frequency management leads to overexposure — burning brand equity and wasting budget. DV360's cross-channel frequency management helps enforce caps.</p>
+      <span class="tag tag-blue">UX</span>
+    </div>
+  </div>
+</section>
+
+<!-- 9. PROG VS DIRECT -->
+<section class="section fade-in" id="vs">
+  <div class="section-tag" data-num="09">Comparison</div>
+  <h2>Programmatic vs <em>Direct Buying</em></h2>
+  <p class="lead">Programmatic doesn't replace direct — they serve different purposes. Here's when to use each:</p>
+
+  <table class="compare-table">
+    <thead>
+      <tr><th>Factor</th><th>Programmatic</th><th>Direct / Traditional</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Speed to Launch</td><td class="check">Hours</td><td class="cross">Weeks (IO negotiations)</td></tr>
+      <tr><td>Audience Precision</td><td class="check">High — user-level targeting</td><td class="cross">Low — site/section level</td></tr>
+      <tr><td>Price</td><td class="check">Variable, often lower</td><td class="cross">Fixed, often premium</td></tr>
+      <tr><td>Scale</td><td class="check">Unlimited — cross-web</td><td class="cross">Limited to that publisher</td></tr>
+      <tr><td>Inventory Quality</td><td class="cross">Variable (open RTB risk)</td><td class="check">Guaranteed premium</td></tr>
+      <tr><td>Transparency</td><td class="cross">Low (open market)</td><td class="check">Full visibility</td></tr>
+      <tr><td>Sponsorships / Takeovers</td><td class="cross">Not possible</td><td class="check">Yes — 100% SOV</td></tr>
+      <tr><td>Optimization</td><td class="check">Real-time, automated</td><td class="cross">Manual, periodic</td></tr>
+      <tr><td>Data Integration</td><td class="check">DMP, CRM, 1P signals</td><td class="cross">Limited</td></tr>
+    </tbody>
+  </table>
+
+  <div class="highlight highlight-gold" style="margin-top:32px;">
+    <p><strong>The smart approach:</strong> Use <strong>Programmatic Guaranteed</strong> to get the best of both worlds — automated workflow with direct-buy inventory quality. Combine open RTB for scale, PMP for premium environments, and direct for high-impact takeovers and sponsorships.</p>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <p>Programmatic Advertising — Complete Reference Guide</p>
+  <p style="color:var(--gold);">DSP · SSP · RTB · DMP · DV360 · PMP · CTV</p>
+</footer>
+
+<script>
+  // Accordion
+  function toggleAcc(header) {
+    const item = header.parentElement;
+    item.classList.toggle('open');
+  }
+
+  // Scroll fade-in
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, { threshold: 0.05 });
+
+  document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+  // Animate hero stats on load
+  document.querySelectorAll('.stat-num').forEach((el, i) => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(10px)';
+    setTimeout(() => {
+      el.style.transition = 'all 0.5s ease';
+      el.style.opacity = '1';
+      el.style.transform = 'translateY(0)';
+    }, 300 + i * 120);
+  });
+</script>
+</body>
+</html>
